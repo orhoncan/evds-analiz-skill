@@ -1,6 +1,6 @@
 # EVDS Analiz
 
-TCMB Elektronik Veri Dağıtım Sistemi (EVDS) API entegrasyonu ile Türkiye ekonomik verilerine erişim, analiz ve görselleştirme aracı.
+TCMB Elektronik Veri Dağıtım Sistemi (EVDS) API entegrasyonu ile Türkiye ekonomik verilerine erişim, analiz ve görselleştirme aracı. Her analizden sonra çıktıları tekrar kontrol etmenizi öneririm. .md veya .py dosyalarını editör yardımıyla ya da Claude ile doğrudan konuşarak ihtiyacınıza göre düzenleyebilirsiniz.
 
 ## Özellikler
 
@@ -80,13 +80,6 @@ Claude: API anahtarı ister → Tarih aralığı sorar → Veri çeker → Anali
 - **API girdi**: `gg-aa-yyyy` (örn: `01-01-2024`)
 - **Aylık veri çıktı**: `yyyy-a` (örn: `2024-1`)
 - **Günlük/haftalık çıktı**: `gg-aa-yyyy` (örn: `07-01-2024`)
-
-### Frekans Dönüşümü
-Farklı frekanstaki verileri karşılaştırmak için:
-```python
-# Günlük/Haftalık → Aylık
-aylik = df.resample('MS').mean()
-```
 
 ## Çıktı Formatları
 
