@@ -39,7 +39,6 @@ TCMB Elektronik Veri Dağıtım Sistemi (EVDS) API entegrasyonu ile Türkiye eko
 ### Görselleştirme
 - Plotly tabanlı interaktif HTML grafikler
 - Hover ile değer gösterimi, zoom/pan desteği
-- orhon.tr renk paletiyle uyumlu tasarım
 - Çoklu seri karşılaştırma grafikleri
 
 ## Kullanım
