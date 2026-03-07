@@ -217,12 +217,16 @@ class EVDSClient:
         df = self._parse_tarih(df, tarih_sutunu)
         
         # Sayısal sütunları dönüştür
-        for col in df.columns:
-            if col not in ['UNIXTIME', 'YEARWEEK']:
-                if df[col].dtype == object:
-                    temiz = df[col].astype(str).str.replace(',', '.', regex=False)
-                    df[col] = temiz.replace(r'^\s*$', pd.NA, regex=True)
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+        cols_to_convert = [col for col in df.columns if col not in ['UNIXTIME', 'YEARWEEK']]
+        if cols_to_convert:
+            # Sadece object (string) sütunlarda temizlik yap
+            obj_cols = df[cols_to_convert].select_dtypes(include=['object']).columns
+            if not obj_cols.empty:
+                # Virgülleri noktaya çevir ve boşlukları NA yap (vectorized)
+                df[obj_cols] = df[obj_cols].astype(str).replace(',', '.', regex=True).replace(r'^\s*$', pd.NA, regex=True)
+
+            # Sayısal dönüşümü toplu yap
+            df[cols_to_convert] = df[cols_to_convert].apply(pd.to_numeric, errors='coerce')
         
         # Gereksiz sütunları kaldır
         for col in ['UNIXTIME', 'YEARWEEK']:
