@@ -14,6 +14,7 @@ import pandas as pd
 from datetime import datetime
 from typing import List, Dict, Optional, Union
 import re
+import functools
 
 class EVDSClient:
     """TCMB EVDS API istemcisi."""
@@ -54,6 +55,13 @@ class EVDSClient:
         self.base_url = (base_url or self.BASE_URL).rstrip('/')
         self._kategoriler = None
     
+    @functools.lru_cache(maxsize=128)
+    def _get_cached_json(self, url: str, timeout: int = 60) -> dict:
+        """Belirtilen URL'den JSON yanıtını alır ve önbelleğe (cache) kaydeder."""
+        response = requests.get(url, headers=self.headers, timeout=timeout)
+        response.raise_for_status()
+        return response.json()
+
     def _extract_records(self, data: Union[dict, list], endpoint: str) -> List[dict]:
         """EVDS yanıtından kayıt listesini çıkarır (dict/list uyumluluğu)."""
         if isinstance(data, list):
@@ -73,11 +81,9 @@ class EVDSClient:
         url = f"{self.base_url}/{endpoint}"
         
         try:
-            response = requests.get(url, headers=self.headers, timeout=30)
-            response.raise_for_status()
-            return response.json()
+            return self._get_cached_json(url, timeout=30)
         except requests.exceptions.HTTPError as e:
-            if response.status_code == 403:
+            if e.response is not None and e.response.status_code == 403:
                 raise ValueError("API anahtarı geçersiz veya eksik. Lütfen kontrol edin.")
             raise e
         except requests.exceptions.RequestException as e:
@@ -184,13 +190,11 @@ class EVDSClient:
         
         # İstek gönder (key header'da)
         try:
-            response = requests.get(url, headers=self.headers, timeout=60)
-            response.raise_for_status()
-            data = response.json()
+            data = self._get_cached_json(url, timeout=60)
         except requests.exceptions.HTTPError as e:
-            if response.status_code == 403:
+            if e.response is not None and e.response.status_code == 403:
                 raise ValueError("API anahtarı geçersiz veya eksik. Lütfen kontrol edin.")
-            elif response.status_code == 404:
+            elif e.response is not None and e.response.status_code == 404:
                 raise ValueError("Veri bulunamadı. URL formatını veya seri kodlarını kontrol edin.")
             raise e
         except requests.exceptions.RequestException as e:
