@@ -10,6 +10,7 @@ EVDS Gelişmiş Analiz Modülü
 
 import pandas as pd
 import numpy as np
+import html
 from typing import Dict, List, Optional, Tuple, Union
 from datetime import datetime
 import warnings
@@ -848,12 +849,15 @@ def dashboard_olustur(
     # Kalite puanı
     kalite = veri_kalitesi_kontrolu(df)
     
-    html = f"""<!DOCTYPE html>
+    # Güvenlik: Kullanıcı verilerini escape et
+    baslik_esc = html.escape(baslik)
+
+    html_content = f"""<!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{baslik}</title>
+    <title>{baslik_esc}</title>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
@@ -969,7 +973,7 @@ def dashboard_olustur(
 <body>
     <div class="dashboard">
         <div class="header">
-            <h1>{baslik}</h1>
+            <h1>{baslik_esc}</h1>
             <p>Oluşturulma: {datetime.now().strftime('%d.%m.%Y %H:%M')} | Kaynak: TCMB EVDS</p>
         </div>
         
@@ -1025,13 +1029,13 @@ def dashboard_olustur(
                         </tr>
                     </thead>
                     <tbody>
-                        {''.join(f"<tr><td>{s['Seri']}</td><td>{s['Gözlem']}</td><td>{s['Ortalama']}</td><td>{s['Std']}</td><td>{s['Min']}</td><td>{s['Max']}</td><td>{s['Son']}</td></tr>" for s in stats_data)}
+                        {''.join(f"<tr><td>{html.escape(str(s['Seri']))}</td><td>{s['Gözlem']}</td><td>{s['Ortalama']}</td><td>{s['Std']}</td><td>{s['Min']}</td><td>{s['Max']}</td><td>{s['Son']}</td></tr>" for s in stats_data)}
                     </tbody>
                 </table>
             </div>
         </div>
         
-        {'<div class="card"><div class="card-title">Tespit Edilen Anomaliler</div><table><thead><tr><th>Seri</th><th>Anomali Sayısı</th><th>Oran</th></tr></thead><tbody>' + ''.join(f"<tr><td>{a['seri']}</td><td>{a['sayi']}</td><td><span class=\\'anomaly-badge {'anomaly-high' if a['oran'] > 5 else 'anomaly-low'}\\'>{a['oran']}%</span></td></tr>" for a in anomali_ozet) + '</tbody></table></div>' if anomali_ozet else ''}
+        {'<div class="card"><div class="card-title">Tespit Edilen Anomaliler</div><table><thead><tr><th>Seri</th><th>Anomali Sayısı</th><th>Oran</th></tr></thead><tbody>' + ''.join(f"<tr><td>{html.escape(str(a['seri']))}</td><td>{a['sayi']}</td><td><span class=\\'anomaly-badge {'anomaly-high' if a['oran'] > 5 else 'anomaly-low'}\\'>{a['oran']}%</span></td></tr>" for a in anomali_ozet) + '</tbody></table></div>' if anomali_ozet else ''}
         
         <div class="footer">
             Dashboard by EVDS Analiz Skill | Veri: TCMB EVDS
@@ -1040,8 +1044,8 @@ def dashboard_olustur(
     
     <script>
         // Trend Chart
-        var trendData = {json.dumps(series_data)};
-        var tarihler = {json.dumps(tarihler)};
+        var trendData = {json.dumps(series_data).replace('<', '\\u003c')};
+        var tarihler = {json.dumps(tarihler).replace('<', '\\u003c')};
         
         var trendTraces = trendData.map(function(s) {{
             return {{
@@ -1063,7 +1067,7 @@ def dashboard_olustur(
         }}, {{ responsive: true, displayModeBar: false }});
         
         // Correlation Chart
-        var corrData = {json.dumps(corr_data)};
+        var corrData = {json.dumps(corr_data).replace('<', '\\u003c')};
         
         Plotly.newPlot('corrChart', [{{
             z: corrData.values,
@@ -1088,7 +1092,7 @@ def dashboard_olustur(
 </html>"""
     
     with open(dosya_adi, 'w', encoding='utf-8') as f:
-        f.write(html)
+        f.write(html_content)
     
     return dosya_adi
 
