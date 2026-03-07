@@ -60,7 +60,7 @@ def cizgi_grafik(
         seri = df[col].dropna()
         
         trace = {
-            'x': [d.strftime('%Y-%m-%d') for d in seri.index],
+            'x': seri.index.strftime('%Y-%m-%d').tolist(),
             'y': seri.values.tolist(),
             'name': col,
             'type': 'scatter',
@@ -131,7 +131,7 @@ def coklu_eksen_grafik(
             continue
         seri = df[col].dropna()
         trace = {
-            'x': [d.strftime('%Y-%m-%d') for d in seri.index],
+            'x': seri.index.strftime('%Y-%m-%d').tolist(),
             'y': seri.values.tolist(),
             'name': col,
             'type': 'scatter',
@@ -148,7 +148,7 @@ def coklu_eksen_grafik(
             continue
         seri = df[col].dropna()
         trace = {
-            'x': [d.strftime('%Y-%m-%d') for d in seri.index],
+            'x': seri.index.strftime('%Y-%m-%d').tolist(),
             'y': seri.values.tolist(),
             'name': col,
             'type': 'scatter',
@@ -307,7 +307,7 @@ def mevsimsellik_grafik(
     """
     STL decomposition sonuçlarını görselleştirir.
     """
-    tarih_str = [d.strftime('%Y-%m-%d') for d in tarihler]
+    tarih_str = tarihler.strftime('%Y-%m-%d').tolist()
     
     traces = [
         {'x': tarih_str, 'y': orijinal.tolist(), 'name': 'Orijinal', 
@@ -350,8 +350,8 @@ def tahmin_grafik(
     """
     Gerçek değerler ve tahminleri görselleştirir.
     """
-    tarih_str = [d.strftime('%Y-%m-%d') for d in tarihler]
-    tahmin_tarih_str = [d.strftime('%Y-%m-%d') for d in tahmin_tarihleri]
+    tarih_str = tarihler.strftime('%Y-%m-%d').tolist()
+    tahmin_tarih_str = tahmin_tarihleri.strftime('%Y-%m-%d').tolist()
     
     traces = [
         {'x': tarih_str, 'y': gercek.tolist(), 'name': 'Gerçek',
