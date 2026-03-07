@@ -226,10 +226,10 @@ class EVDSClient:
             # Sadece object (string) sütunlarda temizlik yap
             obj_cols = df[cols_to_convert].select_dtypes(include=['object']).columns
             if not obj_cols.empty:
-                # Virgülleri noktaya çevir ve boşlukları NA yap (vectorized)
-                df[obj_cols] = df[obj_cols].replace(',', '.', regex=True).replace(r'^\s*$', pd.NA, regex=True)
+                # Virgülleri noktaya çevir (vectorized). str.replace ile df.replace(regex=True)'ye göre çok daha hızlı
+                df[obj_cols] = df[obj_cols].apply(lambda x: x.str.replace(',', '.', regex=False))
 
-            # Sayısal dönüşümü toplu yap
+            # Sayısal dönüşümü toplu yap (boşluklar otomatik NaN olur)
             df[cols_to_convert] = df[cols_to_convert].apply(pd.to_numeric, errors='coerce')
         
         # Gereksiz sütunları kaldır
