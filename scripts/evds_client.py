@@ -10,6 +10,7 @@ TCMB Elektronik Veri Dağıtım Sistemi için Python wrapper.
 """
 
 import requests
+import requests_cache
 import pandas as pd
 from datetime import datetime
 from typing import List, Dict, Optional, Union
@@ -54,11 +55,18 @@ class EVDSClient:
         self.headers = {'key': api_key}
         self.base_url = (base_url or self.BASE_URL).rstrip('/')
         self._kategoriler = None
+        # Cache'i sqlite backend ile kalıcı yapıyoruz ki farklı client instance'ları aynı veriyi tekrar çekmesin.
+        # Bu sayede birden fazla client yaratılsa veya betik tekrar çalıştırılsa dahi aynı request 1 saat boyunca tekrar yapılmaz.
+        # Temp klasöründe tutuyoruz ki git reposunu kirletmesin.
+        import tempfile
+        import os
+        cache_path = os.path.join(tempfile.gettempdir(), 'evds_cache')
+        self.session = requests_cache.CachedSession(cache_path, backend='sqlite', expire_after=3600)
+        self.session.headers.update(self.headers)
     
-    @functools.lru_cache(maxsize=128)
     def _get_cached_json(self, url: str, timeout: int = 60) -> dict:
         """Belirtilen URL'den JSON yanıtını alır ve önbelleğe (cache) kaydeder."""
-        response = requests.get(url, headers=self.headers, timeout=timeout)
+        response = self.session.get(url, timeout=timeout)
         response.raise_for_status()
         return response.json()
 
