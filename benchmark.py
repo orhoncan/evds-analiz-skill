@@ -1,25 +1,20 @@
 import pandas as pd
 import numpy as np
 import time
+from scripts.gelismis_analiz import veri_kalitesi_kontrolu
 
 # Create dummy data
-dates = pd.date_range(start='2000-01-01', periods=10000)
-df = pd.DataFrame({'A': np.random.randn(10000)}, index=dates)
-seri = df['A']
+np.random.seed(42)
+rows = 100000
+cols = 100
+df = pd.DataFrame(np.random.randn(rows, cols), columns=[f'col_{i}' for i in range(cols)])
+mask = np.random.rand(rows, cols) < 0.1
+df = df.mask(mask)
 
-# Original way
+# Using our script functions
 start_time = time.time()
-for _ in range(100):
-    result1 = [d.strftime('%Y-%m-%d') for d in seri.index]
-time_orig = (time.time() - start_time) / 100
+for _ in range(5):
+    res = veri_kalitesi_kontrolu(df)
+time_taken = (time.time() - start_time) / 5
 
-# Optimized way
-start_time = time.time()
-for _ in range(100):
-    result2 = seri.index.strftime('%Y-%m-%d').tolist()
-time_opt = (time.time() - start_time) / 100
-
-print(f"Original list comp time: {time_orig*1000:.4f} ms")
-print(f"Optimized pandas time:   {time_opt*1000:.4f} ms")
-print(f"Speedup:                 {time_orig/time_opt:.2f}x faster")
-assert result1 == result2
+print(f"Time taken to run veri_kalitesi_kontrolu: {time_taken*1000:.2f} ms")

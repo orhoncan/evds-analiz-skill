@@ -67,13 +67,31 @@ def veri_kalitesi_kontrolu(df: pd.DataFrame) -> Dict:
         'puan': 100  # Kalite puanı (100 üzerinden)
     }
     
+    # Sütun bazlı analiz verilerini önceden hesapla
+    isna_sums = df.isna().sum()
+    n_unique = df.nunique()
+    eksik_toplam = int(isna_sums.sum())
+    toplam_hucre = df.size
+
+    satir_sayisi = len(df)
+
+    # Oranları vektörel hesapla
+    if satir_sayisi > 0:
+        eksik_orans = (isna_sums / satir_sayisi * 100).round(2)
+        benzersiz_orans = (n_unique / satir_sayisi * 100).round(2)
+    else:
+        eksik_orans = pd.Series(0.0, index=df.columns)
+        benzersiz_orans = pd.Series(0.0, index=df.columns)
+
+    dtypes = df.dtypes.astype(str)
+
     # Genel bilgiler
     rapor['genel'] = {
-        'satir_sayisi': len(df),
+        'satir_sayisi': satir_sayisi,
         'sutun_sayisi': len(df.columns),
-        'toplam_hucre': df.size,
-        'eksik_toplam': df.isna().sum().sum(),
-        'eksik_oran': round(df.isna().sum().sum() / df.size * 100, 2),
+        'toplam_hucre': toplam_hucre,
+        'eksik_toplam': eksik_toplam,
+        'eksik_oran': round(eksik_toplam / toplam_hucre * 100, 2) if toplam_hucre > 0 else 0.0,
         'duplicate_satir': df.duplicated().sum(),
         'bellek_kullanimi': f"{df.memory_usage(deep=True).sum() / 1024:.2f} KB"
     }
@@ -92,19 +110,15 @@ def veri_kalitesi_kontrolu(df: pd.DataFrame) -> Dict:
         rapor['uyarilar'].append(f"⚠️ {rapor['genel']['duplicate_satir']} duplicate satır bulundu")
     
     # Sütun bazlı analiz
-    isna_sums = df.isna().sum()
-    n_unique = df.nunique()
-
     for col in df.columns:
         seri = df[col]
-        col_len = len(seri)
 
         col_info = {
-            'tip': str(seri.dtype),
+            'tip': dtypes[col],
             'eksik': int(isna_sums[col]),
-            'eksik_oran': round(float(isna_sums[col]) / col_len * 100, 2) if col_len > 0 else 0.0,
+            'eksik_oran': float(eksik_orans[col]),
             'benzersiz': int(n_unique[col]),
-            'benzersiz_oran': round(float(n_unique[col]) / col_len * 100, 2) if col_len > 0 else 0.0
+            'benzersiz_oran': float(benzersiz_orans[col])
         }
         
         # Sayısal sütunlar için ek analiz
