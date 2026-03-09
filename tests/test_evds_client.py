@@ -1,5 +1,7 @@
 import pytest
 import pandas as pd
+import requests
+from unittest.mock import patch, MagicMock
 from scripts.evds_client import EVDSClient
 
 @pytest.fixture
@@ -99,3 +101,87 @@ def test_parse_tarih_preserves_other_columns(client):
     assert list(result["Değer"]) == [10.5, 20.0]
     assert result.index[0] == pd.Timestamp("2024-01-01")
     assert result.index[1] == pd.Timestamp("2024-02-01")
+
+@patch("requests_cache.CachedSession.get")
+def test_veri_cek_happy_path(mock_get, client):
+    # Prepare a dummy response
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "totalCount": 2,
+        "items": [
+            {
+                "Tarih": "01-01-2024",
+                "TP_DK_USD_A": "29.50",
+                "UNIXTIME": {"$numberLong": "1704067200"}
+            },
+            {
+                "Tarih": "02-01-2024",
+                "TP_DK_USD_A": "29.60",
+                "UNIXTIME": {"$numberLong": "1704153600"}
+            }
+        ]
+    }
+    mock_get.return_value = mock_response
+
+    # Test the function
+    df = client.veri_cek(seriler="TP.DK.USD.A", baslangic="01-01-2024", bitis="02-01-2024", frekans=1)
+
+    # Verify that get was called with the correct URL
+    mock_get.assert_called_once()
+    called_url = mock_get.call_args[0][0]
+    assert "series=TP.DK.USD.A" in called_url
+    assert "startDate=01-01-2024" in called_url
+    assert "endDate=02-01-2024" in called_url
+    assert "frequency=1" in called_url
+
+    # Verify output dataframe
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert "TP_DK_USD_A" in df.columns
+    assert "UNIXTIME" not in df.columns
+
+    # Assert dates and values
+    assert df.index.name == "Tarih"
+    assert df.index[0] == pd.Timestamp("2024-01-01")
+    assert df.index[1] == pd.Timestamp("2024-01-02")
+    assert df["TP_DK_USD_A"].iloc[0] == 29.50
+    assert df["TP_DK_USD_A"].iloc[1] == 29.60
+
+@patch("requests_cache.CachedSession.get")
+def test_veri_cek_http_error_403(mock_get, client):
+    mock_response = MagicMock()
+    mock_response.status_code = 403
+    mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(response=mock_response)
+    mock_get.return_value = mock_response
+
+    with pytest.raises(ValueError, match="API anahtarı geçersiz veya eksik"):
+        client.veri_cek(seriler="TP.DK.USD.A", baslangic="01-01-2024", bitis="02-01-2024")
+
+@patch("requests_cache.CachedSession.get")
+def test_veri_cek_http_error_404(mock_get, client):
+    mock_response = MagicMock()
+    mock_response.status_code = 404
+    mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(response=mock_response)
+    mock_get.return_value = mock_response
+
+    with pytest.raises(ValueError, match="Veri bulunamadı. URL formatını veya seri kodlarını kontrol edin."):
+        client.veri_cek(seriler="INVALID_SERIES", baslangic="01-01-2024", bitis="02-01-2024")
+
+@patch("requests_cache.CachedSession.get")
+def test_veri_cek_connection_error(mock_get, client):
+    mock_get.side_effect = requests.exceptions.ConnectionError("Connection timeout")
+
+    with pytest.raises(ConnectionError, match="Bağlantı hatası: Connection timeout"):
+        client.veri_cek(seriler="TP.DK.USD.A", baslangic="01-01-2024", bitis="02-01-2024")
+
+@patch("requests_cache.CachedSession.get")
+def test_veri_cek_missing_data(mock_get, client):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    # "items" present but empty
+    mock_response.json.return_value = {"totalCount": 0, "items": []}
+    mock_get.return_value = mock_response
+
+    with pytest.raises(ValueError, match="Veri bulunamadı. Tarih aralığını ve seri kodlarını kontrol edin."):
+        client.veri_cek(seriler="TP.DK.USD.A", baslangic="01-01-2024", bitis="02-01-2024")
