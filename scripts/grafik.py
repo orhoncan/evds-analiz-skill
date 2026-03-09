@@ -4,6 +4,7 @@ EVDS Grafik Modülü
 orhon-viz tasarım ilkelerine uygun interaktif Plotly grafikleri.
 """
 
+import os
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional, Union
@@ -106,6 +107,7 @@ def cizgi_grafik(
     
     html_content = _html_sablonu(traces, layout, baslik)
     
+    dosya_adi = os.path.basename(dosya_adi)
     with open(dosya_adi, 'w', encoding='utf-8') as f:
         f.write(html_content)
     
@@ -182,6 +184,7 @@ def coklu_eksen_grafik(
     
     html_content = _html_sablonu(traces, layout, baslik)
     
+    dosya_adi = os.path.basename(dosya_adi)
     with open(dosya_adi, 'w', encoding='utf-8') as f:
         f.write(html_content)
     
@@ -252,6 +255,7 @@ def korelasyon_matrisi_grafik(
     
     html_content = _html_sablonu([trace], layout, baslik)
     
+    dosya_adi = os.path.basename(dosya_adi)
     with open(dosya_adi, 'w', encoding='utf-8') as f:
         f.write(html_content)
     
@@ -290,6 +294,7 @@ def bar_grafik(
     
     html_content = _html_sablonu([trace], layout, baslik)
     
+    dosya_adi = os.path.basename(dosya_adi)
     with open(dosya_adi, 'w', encoding='utf-8') as f:
         f.write(html_content)
     
@@ -332,6 +337,7 @@ def mevsimsellik_grafik(
     
     html_content = _html_sablonu(traces, layout, baslik)
     
+    dosya_adi = os.path.basename(dosya_adi)
     with open(dosya_adi, 'w', encoding='utf-8') as f:
         f.write(html_content)
     
@@ -385,6 +391,7 @@ def tahmin_grafik(
     
     html_content = _html_sablonu(traces, layout, baslik)
     
+    dosya_adi = os.path.basename(dosya_adi)
     with open(dosya_adi, 'w', encoding='utf-8') as f:
         f.write(html_content)
     
