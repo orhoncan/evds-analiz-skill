@@ -60,6 +60,21 @@ def test_parse_tarih_fallback(client):
     assert result.index[0] == pd.Timestamp("2024-05-01")
     assert result.index[1] == pd.Timestamp("2024-05-15")
 
+def test_parse_tarih_mixed_fallback(client):
+    # Test format='mixed' fallback
+    # The first fallback tries dayfirst=True, which will fail if day > 12 when parsing in monthfirst style.
+    # To force the mixed fallback, we can provide ambiguous dates that require format='mixed'.
+    # Actually, pd.to_datetime with dayfirst=True can fail if the string is clearly MM/DD/YYYY with DD > 12 and month > 12.
+    # Example: '13/13/2024' is invalid. But wait, if we pass '01/13/2024', dayfirst=True treats '01' as day, '13' as month, which fails since month > 12.
+    # So '01/13/2024' forces it to fail the first parse, then it uses format='mixed' which parses it as Jan 13.
+    df = pd.DataFrame({"Tarih": ["01/13/2024", "02/15/2024"]})
+    result = client._parse_tarih(df, "Tarih")
+
+    assert result.index.name == "Tarih"
+    assert len(result) == 2
+    assert result.index[0] == pd.Timestamp("2024-01-13")
+    assert result.index[1] == pd.Timestamp("2024-02-15")
+
 def test_parse_tarih_empty_df(client):
     # Test empty dataframe
     df = pd.DataFrame({"Tarih": []})
