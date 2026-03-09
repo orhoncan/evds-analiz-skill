@@ -377,14 +377,27 @@ def tanimlayici_istatistikler(df: pd.DataFrame) -> Dict:
     """
     sonuclar = {}
     
+    if df.empty:
+        return sonuclar
+
+    # Calculate basic stats for the entire dataframe in one go
+    stats = df.agg(['mean', 'std', 'min', 'max'])
+
+    # Precompute properties to avoid per-column overhead where possible
+    counts = df.count()
+    idxmin_s = df.idxmin()
+    idxmax_s = df.idxmax()
+    nas_s = df.isna().sum()
+
     for col in df.columns:
-        seri = df[col].dropna()
-        
-        if len(seri) == 0:
+        if counts[col] == 0:
             continue
+
+        seri = df[col].dropna()
+        n = len(seri)
         
         # Trend belirleme
-        if len(seri) >= 12:
+        if n >= 12:
             son_12 = seri.tail(12)
             ilk_6 = son_12.head(6).mean()
             son_6 = son_12.tail(6).mean()
@@ -404,16 +417,16 @@ def tanimlayici_istatistikler(df: pd.DataFrame) -> Dict:
         sonuclar[col] = {
             'baslangic': seri.index.min().strftime('%d.%m.%Y'),
             'bitis': seri.index.max().strftime('%d.%m.%Y'),
-            'gozlem': len(seri),
-            'ortalama': round(seri.mean(), 2),
-            'std': round(seri.std(), 2),
-            'min': round(seri.min(), 2),
-            'min_tarih': seri.idxmin().strftime('%d.%m.%Y'),
-            'max': round(seri.max(), 2),
-            'max_tarih': seri.idxmax().strftime('%d.%m.%Y'),
-            'son_deger': round(seri.iloc[-1], 2),
+            'gozlem': int(counts[col]),
+            'ortalama': round(float(stats.loc['mean', col]), 2),
+            'std': round(float(stats.loc['std', col]), 2),
+            'min': round(float(stats.loc['min', col]), 2),
+            'min_tarih': idxmin_s[col].strftime('%d.%m.%Y'),
+            'max': round(float(stats.loc['max', col]), 2),
+            'max_tarih': idxmax_s[col].strftime('%d.%m.%Y'),
+            'son_deger': round(float(seri.iloc[-1]), 2),
             'trend': trend,
-            'eksik': df[col].isna().sum()
+            'eksik': int(nas_s[col])
         }
     
     return sonuclar
