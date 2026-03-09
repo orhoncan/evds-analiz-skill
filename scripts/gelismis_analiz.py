@@ -514,42 +514,71 @@ def anomali_tespiti(
     """
     sonuclar = {}
     
-    for col in df.select_dtypes(include=[np.number]).columns:
-        seri = df[col].dropna()
+    num_df = df.select_dtypes(include=[np.number])
+
+    if num_df.empty:
+        return sonuclar
+
+    # Pre-calculate vectorized statistics for the entire numerical dataframe to avoid loop overhead
+    precalc = {
+        'mean_all': num_df.mean(),
+        'std_all': num_df.std(),
+        'min_all': num_df.min(),
+        'max_all': num_df.max()
+    }
+
+    if metot == 'iqr':
+        precalc['Q1'] = num_df.quantile(0.25)
+        precalc['Q3'] = num_df.quantile(0.75)
+    elif metot == 'zscore':
+        pass # Already calculated mean_all and std_all
+    elif metot == 'mad':
+        precalc['median'] = num_df.median()
+
+    for col in num_df.columns:
+        seri = num_df[col].dropna()
         
         if len(seri) < 10:
             sonuclar[col] = {'anomali_yok': True, 'mesaj': 'Yetersiz veri'}
             continue
+
+        s_mean = precalc['mean_all'][col]
+        s_std = precalc['std_all'][col]
         
         if metot == 'iqr':
-            Q1 = seri.quantile(0.25)
-            Q3 = seri.quantile(0.75)
+            Q1 = precalc['Q1'][col]
+            Q3 = precalc['Q3'][col]
             IQR = Q3 - Q1
             alt = Q1 - esik * IQR
             ust = Q3 + esik * IQR
             anomaliler = seri[(seri < alt) | (seri > ust)]
             
         elif metot == 'zscore':
-            z = np.abs((seri - seri.mean()) / seri.std())
+            z = np.abs((seri - s_mean) / s_std) if s_std != 0 else seri * 0
             anomaliler = seri[z > esik]
-            alt = seri.mean() - esik * seri.std()
-            ust = seri.mean() + esik * seri.std()
+            alt = s_mean - esik * s_std
+            ust = s_mean + esik * s_std
             
         elif metot == 'mad':
-            medyan = seri.median()
+            medyan = precalc['median'][col]
             mad = np.median(np.abs(seri - medyan))
-            modified_z = 0.6745 * (seri - medyan) / mad
+            if mad == 0:
+                modified_z = seri * 0
+                alt, ust = medyan, medyan
+            else:
+                modified_z = 0.6745 * (seri - medyan) / mad
+                alt = medyan - esik * mad / 0.6745
+                ust = medyan + esik * mad / 0.6745
             anomaliler = seri[np.abs(modified_z) > esik]
-            alt = medyan - esik * mad / 0.6745
-            ust = medyan + esik * mad / 0.6745
             
         elif metot == 'rolling':
-            pencere = pencere or min(12, len(seri) // 4)
-            rolling_mean = seri.rolling(window=pencere, center=True).mean()
-            rolling_std = seri.rolling(window=pencere, center=True).std()
-            alt = rolling_mean - esik * rolling_std
-            ust = rolling_mean + esik * rolling_std
-            anomaliler = seri[(seri < alt) | (seri > ust)]
+            penc = pencere or min(12, len(seri) // 4)
+            rolling_mean = seri.rolling(window=penc, center=True).mean()
+            rolling_std = seri.rolling(window=penc, center=True).std()
+            alt_seri = rolling_mean - esik * rolling_std
+            ust_seri = rolling_mean + esik * rolling_std
+            anomaliler = seri[(seri < alt_seri) | (seri > ust_seri)]
+            alt, ust = None, None # Dynamic bounds, cannot be represented by a single float
             
         elif metot == 'isolation':
             try:
@@ -569,12 +598,13 @@ def anomali_tespiti(
             'anomali_oran': round(len(anomaliler) / len(seri) * 100, 2),
             'anomali_indeksler': anomaliler.index.tolist(),
             'anomali_degerler': anomaliler.values.tolist(),
-            'sinirlar': (round(alt, 4) if alt else None, round(ust, 4) if ust else None),
+            'sinirlar': (round(alt, 4) if alt is not None else None,
+                         round(ust, 4) if ust is not None else None),
             'istatistik': {
-                'ortalama': round(seri.mean(), 4),
-                'std': round(seri.std(), 4),
-                'min': round(seri.min(), 4),
-                'max': round(seri.max(), 4)
+                'ortalama': round(s_mean, 4),
+                'std': round(s_std, 4),
+                'min': round(precalc['min_all'][col], 4),
+                'max': round(precalc['max_all'][col], 4)
             }
         }
         
@@ -583,12 +613,12 @@ def anomali_tespiti(
             detaylar = []
             for idx, val in anomaliler.items():
                 tarih_str = idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx)
-                sapma = (val - seri.mean()) / seri.std() if seri.std() != 0 else 0
+                sapma = (val - s_mean) / s_std if s_std != 0 else 0
                 detaylar.append({
                     'tarih': tarih_str,
                     'deger': round(val, 4),
                     'z_score': round(sapma, 2),
-                    'tip': 'yüksek' if val > seri.mean() else 'düşük'
+                    'tip': 'yüksek' if val > s_mean else 'düşük'
                 })
             sonuclar[col]['detaylar'] = sorted(detaylar, key=lambda x: abs(x['z_score']), reverse=True)[:10]
     

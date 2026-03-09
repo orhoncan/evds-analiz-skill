@@ -1,20 +1,22 @@
-import pandas as pd
-import numpy as np
 import time
-from scripts.gelismis_analiz import veri_kalitesi_kontrolu
+import numpy as np
+import pandas as pd
+from scripts.gelismis_analiz import anomali_tespiti
 
-# Create dummy data
+# Generate a large wide dataset
 np.random.seed(42)
-rows = 100000
-cols = 100
-df = pd.DataFrame(np.random.randn(rows, cols), columns=[f'col_{i}' for i in range(cols)])
-mask = np.random.rand(rows, cols) < 0.1
-df = df.mask(mask)
+n_rows = 1000
+n_cols = 1000
+data = np.random.randn(n_rows, n_cols)
+df = pd.DataFrame(data, columns=[f'col_{i}' for i in range(n_cols)])
 
-# Using our script functions
-start_time = time.time()
-for _ in range(5):
-    res = veri_kalitesi_kontrolu(df)
-time_taken = (time.time() - start_time) / 5
+# Add some nans and outliers
+for col in df.columns[:100]:
+    df.loc[np.random.choice(df.index, size=10, replace=False), col] = np.nan
+    df.loc[np.random.choice(df.index, size=5, replace=False), col] = 10.0
+    df.loc[np.random.choice(df.index, size=5, replace=False), col] = -10.0
 
-print(f"Time taken to run veri_kalitesi_kontrolu: {time_taken*1000:.2f} ms")
+start = time.time()
+res_zscore = anomali_tespiti(df, metot='zscore')
+end = time.time()
+print(f"Z-Score Time (Optimized): {end - start:.4f} seconds")
