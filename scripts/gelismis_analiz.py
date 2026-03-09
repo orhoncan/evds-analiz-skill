@@ -444,7 +444,7 @@ def mevsimsellik_temizle(
     elif metot == 'ma':
         # Klasik hareketli ortalama ayrıştırma
         trend = seri.rolling(window=periyot, center=True).mean()
-        trend_temiz = trend.fillna(method='bfill').fillna(method='ffill')
+        trend_temiz = trend.bfill().ffill()
         
         # Mevsimsel bileşen
         detrended = seri / trend_temiz
@@ -472,7 +472,7 @@ def mevsimsellik_temizle(
         trend = duzeltilmis1.rolling(window=7, center=True).apply(
             lambda x: np.dot(x, weights) if len(x) == 7 else np.nan
         )
-        trend = trend.fillna(method='bfill').fillna(method='ffill')
+        trend = trend.bfill().ffill()
         
         # Final mevsimsel
         si2 = seri - trend
