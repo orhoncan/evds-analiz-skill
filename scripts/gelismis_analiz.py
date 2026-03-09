@@ -8,9 +8,11 @@ EVDS Gelişmiş Analiz Modülü
 - Veri kalitesi kontrolü
 """
 
+import os
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Union
+import html
+from typing import Dict, List
 from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
@@ -35,6 +37,246 @@ COLORS = {
 }
 
 PALETTE = ['#2C3E50', '#E74C3C', '#3498DB', '#F39C12', '#16A085', '#9B59B6', '#27AE60']
+
+
+DASHBOARD_TEMPLATE = """<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{baslik_esc}</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f6fa;
+            color: {color_text};
+            padding: 20px;
+        }}
+        .dashboard {{
+            max-width: 1400px;
+            margin: 0 auto;
+        }}
+        .header {{
+            background: linear-gradient(135deg, {color_primary}, {color_secondary});
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }}
+        .header h1 {{ font-size: 28px; margin-bottom: 5px; }}
+        .header p {{ opacity: 0.9; font-size: 14px; }}
+
+        .grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }}
+        .card {{
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }}
+        .card-title {{
+            font-size: 14px;
+            color: {color_text_secondary};
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 15px;
+        }}
+        .metric {{
+            font-size: 36px;
+            font-weight: 700;
+            color: {color_primary};
+        }}
+        .metric-sub {{ font-size: 14px; color: {color_text_secondary}; }}
+
+        .chart-card {{
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }}
+        .chart {{ height: 400px; }}
+
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }}
+        th, td {{
+            padding: 12px;
+            text-align: right;
+            border-bottom: 1px solid {color_grid};
+        }}
+        th {{
+            background: {color_grid};
+            color: {color_secondary};
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+        }}
+        th:first-child, td:first-child {{ text-align: left; }}
+        tr:hover {{ background: #fafbfc; }}
+
+        .quality-bar {{
+            height: 8px;
+            background: {color_grid};
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 10px;
+        }}
+        .quality-fill {{
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }}
+        .quality-good {{ background: {color_success}; }}
+        .quality-medium {{ background: {color_warning}; }}
+        .quality-bad {{ background: {color_danger}; }}
+
+        .anomaly-badge {{
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }}
+        .anomaly-high {{ background: #ffeaea; color: {color_danger}; }}
+        .anomaly-low {{ background: #fff8e6; color: {color_warning}; }}
+
+        .footer {{
+            text-align: center;
+            color: {color_text_secondary};
+            font-size: 12px;
+            padding: 20px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <h1>{baslik_esc}</h1>
+            <p>Oluşturulma: {olusturulma_tarihi} | Kaynak: TCMB EVDS</p>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <div class="card-title">Veri Kalitesi</div>
+                <div class="metric">{kalite_puan}/100</div>
+                <div class="metric-sub">{kalite_degerlendirme}</div>
+                <div class="quality-bar">
+                    <div class="quality-fill {quality_class}"
+                         style="width: {kalite_puan}%"></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">Toplam Gözlem</div>
+                <div class="metric">{toplam_gozlem}</div>
+                <div class="metric-sub">{sutun_sayisi} seri</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Eksik Veri</div>
+                <div class="metric">{eksik_oran}%</div>
+                <div class="metric-sub">{eksik_toplam} hücre</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Anomali Sayısı</div>
+                <div class="metric">{anomali_toplam}</div>
+                <div class="metric-sub">{anomali_seri_sayisi} seride tespit</div>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <div class="card-title">Zaman Serisi Trendi</div>
+            <div id="trendChart" class="chart"></div>
+        </div>
+
+        <div class="grid" style="grid-template-columns: 1fr 1fr;">
+            <div class="chart-card">
+                <div class="card-title">Korelasyon Matrisi</div>
+                <div id="corrChart" class="chart"></div>
+            </div>
+            <div class="card">
+                <div class="card-title">Özet İstatistikler</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Seri</th>
+                            <th>N</th>
+                            <th>Ort.</th>
+                            <th>Std</th>
+                            <th>Min</th>
+                            <th>Max</th>
+                            <th>Son</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {stats_html}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {anomali_html}
+
+        <div class="footer">
+            Dashboard by EVDS Analiz Skill | Veri: TCMB EVDS
+        </div>
+    </div>
+
+    <script>
+        // Trend Chart
+        var trendData = {trend_data_json};
+        var tarihler = {tarihler_json};
+
+        var trendTraces = trendData.map(function(s) {{
+            return {{
+                x: tarihler,
+                y: s.data,
+                name: s.name,
+                type: 'scatter',
+                mode: 'lines',
+                line: {{ color: s.color, width: 2 }}
+            }};
+        }});
+
+        Plotly.newPlot('trendChart', trendTraces, {{
+            margin: {{ l: 50, r: 30, t: 20, b: 40 }},
+            xaxis: {{ gridcolor: '{color_grid}' }},
+            yaxis: {{ gridcolor: '{color_grid}' }},
+            hovermode: 'x unified',
+            legend: {{ orientation: 'h', y: 1.1 }}
+        }}, {{ responsive: true, displayModeBar: false }});
+
+        // Correlation Chart
+        var corrData = {corr_data_json};
+
+        Plotly.newPlot('corrChart', [{{
+            z: corrData.values,
+            x: corrData.labels,
+            y: corrData.labels,
+            type: 'heatmap',
+            colorscale: [
+                [0, '#E74C3C'],
+                [0.5, '#ECF0F1'],
+                [1, '#3498DB']
+            ],
+            zmin: -1,
+            zmax: 1,
+            showscale: true,
+            colorbar: {{ title: 'r' }}
+        }}], {{
+            margin: {{ l: 100, r: 50, t: 20, b: 100 }},
+            xaxis: {{ tickangle: -45 }}
+        }}, {{ responsive: true, displayModeBar: false }});
+    </script>
+</body>
+</html>"""
 
 
 # ============================================================================
@@ -66,13 +308,31 @@ def veri_kalitesi_kontrolu(df: pd.DataFrame) -> Dict:
         'puan': 100  # Kalite puanı (100 üzerinden)
     }
     
+    # Sütun bazlı analiz verilerini önceden hesapla
+    isna_sums = df.isna().sum()
+    n_unique = df.nunique()
+    eksik_toplam = int(isna_sums.sum())
+    toplam_hucre = df.size
+
+    satir_sayisi = len(df)
+
+    # Oranları vektörel hesapla
+    if satir_sayisi > 0:
+        eksik_orans = (isna_sums / satir_sayisi * 100).round(2)
+        benzersiz_orans = (n_unique / satir_sayisi * 100).round(2)
+    else:
+        eksik_orans = pd.Series(0.0, index=df.columns)
+        benzersiz_orans = pd.Series(0.0, index=df.columns)
+
+    dtypes = df.dtypes.astype(str)
+
     # Genel bilgiler
     rapor['genel'] = {
-        'satir_sayisi': len(df),
+        'satir_sayisi': satir_sayisi,
         'sutun_sayisi': len(df.columns),
-        'toplam_hucre': df.size,
-        'eksik_toplam': df.isna().sum().sum(),
-        'eksik_oran': round(df.isna().sum().sum() / df.size * 100, 2),
+        'toplam_hucre': toplam_hucre,
+        'eksik_toplam': eksik_toplam,
+        'eksik_oran': round(eksik_toplam / toplam_hucre * 100, 2) if toplam_hucre > 0 else 0.0,
         'duplicate_satir': df.duplicated().sum(),
         'bellek_kullanimi': f"{df.memory_usage(deep=True).sum() / 1024:.2f} KB"
     }
@@ -93,12 +353,13 @@ def veri_kalitesi_kontrolu(df: pd.DataFrame) -> Dict:
     # Sütun bazlı analiz
     for col in df.columns:
         seri = df[col]
+
         col_info = {
-            'tip': str(seri.dtype),
-            'eksik': seri.isna().sum(),
-            'eksik_oran': round(seri.isna().sum() / len(seri) * 100, 2),
-            'benzersiz': seri.nunique(),
-            'benzersiz_oran': round(seri.nunique() / len(seri) * 100, 2)
+            'tip': dtypes[col],
+            'eksik': int(isna_sums[col]),
+            'eksik_oran': float(eksik_orans[col]),
+            'benzersiz': int(n_unique[col]),
+            'benzersiz_oran': float(benzersiz_orans[col])
         }
         
         # Sayısal sütunlar için ek analiz
@@ -159,7 +420,7 @@ def veri_kalitesi_kontrolu(df: pd.DataFrame) -> Dict:
             if len(eksik_tarihler) > 0:
                 rapor['puan'] -= min(10, len(eksik_tarihler))
                 rapor['uyarilar'].append(f"⚠️ Zaman serisinde {len(eksik_tarihler)} eksik tarih var")
-                rapor['zaman_serisi']['eksik_tarihler_ornek'] = [d.strftime('%Y-%m-%d') for d in eksik_tarihler[:5]]
+                rapor['zaman_serisi']['eksik_tarihler_ornek'] = eksik_tarihler[:5].strftime('%Y-%m-%d').tolist()
     
     # Final puan
     rapor['puan'] = max(0, rapor['puan'])
@@ -253,42 +514,71 @@ def anomali_tespiti(
     """
     sonuclar = {}
     
-    for col in df.select_dtypes(include=[np.number]).columns:
-        seri = df[col].dropna()
+    num_df = df.select_dtypes(include=[np.number])
+
+    if num_df.empty:
+        return sonuclar
+
+    # Pre-calculate vectorized statistics for the entire numerical dataframe to avoid loop overhead
+    precalc = {
+        'mean_all': num_df.mean(),
+        'std_all': num_df.std(),
+        'min_all': num_df.min(),
+        'max_all': num_df.max()
+    }
+
+    if metot == 'iqr':
+        precalc['Q1'] = num_df.quantile(0.25)
+        precalc['Q3'] = num_df.quantile(0.75)
+    elif metot == 'zscore':
+        pass # Already calculated mean_all and std_all
+    elif metot == 'mad':
+        precalc['median'] = num_df.median()
+
+    for col in num_df.columns:
+        seri = num_df[col].dropna()
         
         if len(seri) < 10:
             sonuclar[col] = {'anomali_yok': True, 'mesaj': 'Yetersiz veri'}
             continue
+
+        s_mean = precalc['mean_all'][col]
+        s_std = precalc['std_all'][col]
         
         if metot == 'iqr':
-            Q1 = seri.quantile(0.25)
-            Q3 = seri.quantile(0.75)
+            Q1 = precalc['Q1'][col]
+            Q3 = precalc['Q3'][col]
             IQR = Q3 - Q1
             alt = Q1 - esik * IQR
             ust = Q3 + esik * IQR
             anomaliler = seri[(seri < alt) | (seri > ust)]
             
         elif metot == 'zscore':
-            z = np.abs((seri - seri.mean()) / seri.std())
+            z = np.abs((seri - s_mean) / s_std) if s_std != 0 else seri * 0
             anomaliler = seri[z > esik]
-            alt = seri.mean() - esik * seri.std()
-            ust = seri.mean() + esik * seri.std()
+            alt = s_mean - esik * s_std
+            ust = s_mean + esik * s_std
             
         elif metot == 'mad':
-            medyan = seri.median()
+            medyan = precalc['median'][col]
             mad = np.median(np.abs(seri - medyan))
-            modified_z = 0.6745 * (seri - medyan) / mad
+            if mad == 0:
+                modified_z = seri * 0
+                alt, ust = medyan, medyan
+            else:
+                modified_z = 0.6745 * (seri - medyan) / mad
+                alt = medyan - esik * mad / 0.6745
+                ust = medyan + esik * mad / 0.6745
             anomaliler = seri[np.abs(modified_z) > esik]
-            alt = medyan - esik * mad / 0.6745
-            ust = medyan + esik * mad / 0.6745
             
         elif metot == 'rolling':
-            pencere = pencere or min(12, len(seri) // 4)
-            rolling_mean = seri.rolling(window=pencere, center=True).mean()
-            rolling_std = seri.rolling(window=pencere, center=True).std()
-            alt = rolling_mean - esik * rolling_std
-            ust = rolling_mean + esik * rolling_std
-            anomaliler = seri[(seri < alt) | (seri > ust)]
+            penc = pencere or min(12, len(seri) // 4)
+            rolling_mean = seri.rolling(window=penc, center=True).mean()
+            rolling_std = seri.rolling(window=penc, center=True).std()
+            alt_seri = rolling_mean - esik * rolling_std
+            ust_seri = rolling_mean + esik * rolling_std
+            anomaliler = seri[(seri < alt_seri) | (seri > ust_seri)]
+            alt, ust = None, None # Dynamic bounds, cannot be represented by a single float
             
         elif metot == 'isolation':
             try:
@@ -308,12 +598,13 @@ def anomali_tespiti(
             'anomali_oran': round(len(anomaliler) / len(seri) * 100, 2),
             'anomali_indeksler': anomaliler.index.tolist(),
             'anomali_degerler': anomaliler.values.tolist(),
-            'sinirlar': (round(alt, 4) if alt else None, round(ust, 4) if ust else None),
+            'sinirlar': (round(alt, 4) if alt is not None else None,
+                         round(ust, 4) if ust is not None else None),
             'istatistik': {
-                'ortalama': round(seri.mean(), 4),
-                'std': round(seri.std(), 4),
-                'min': round(seri.min(), 4),
-                'max': round(seri.max(), 4)
+                'ortalama': round(s_mean, 4),
+                'std': round(s_std, 4),
+                'min': round(precalc['min_all'][col], 4),
+                'max': round(precalc['max_all'][col], 4)
             }
         }
         
@@ -322,12 +613,12 @@ def anomali_tespiti(
             detaylar = []
             for idx, val in anomaliler.items():
                 tarih_str = idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx)
-                sapma = (val - seri.mean()) / seri.std() if seri.std() != 0 else 0
+                sapma = (val - s_mean) / s_std if s_std != 0 else 0
                 detaylar.append({
                     'tarih': tarih_str,
                     'deger': round(val, 4),
                     'z_score': round(sapma, 2),
-                    'tip': 'yüksek' if val > seri.mean() else 'düşük'
+                    'tip': 'yüksek' if val > s_mean else 'düşük'
                 })
             sonuclar[col]['detaylar'] = sorted(detaylar, key=lambda x: abs(x['z_score']), reverse=True)[:10]
     
@@ -423,7 +714,7 @@ def mevsimsellik_temizle(
     elif metot == 'ma':
         # Klasik hareketli ortalama ayrıştırma
         trend = seri.rolling(window=periyot, center=True).mean()
-        trend_temiz = trend.fillna(method='bfill').fillna(method='ffill')
+        trend_temiz = trend.bfill().ffill()
         
         # Mevsimsel bileşen
         detrended = seri / trend_temiz
@@ -451,7 +742,7 @@ def mevsimsellik_temizle(
         trend = duzeltilmis1.rolling(window=7, center=True).apply(
             lambda x: np.dot(x, weights) if len(x) == 7 else np.nan
         )
-        trend = trend.fillna(method='bfill').fillna(method='ffill')
+        trend = trend.bfill().ffill()
         
         # Final mevsimsel
         si2 = seri - trend
@@ -815,7 +1106,7 @@ def dashboard_olustur(
     
     # Zaman serisi verileri
     if isinstance(df.index, pd.DatetimeIndex):
-        tarihler = [d.strftime('%Y-%m-%d') for d in df.index]
+        tarihler = df.index.strftime('%Y-%m-%d').tolist()
     else:
         tarihler = list(range(len(df)))
     
@@ -848,247 +1139,49 @@ def dashboard_olustur(
     # Kalite puanı
     kalite = veri_kalitesi_kontrolu(df)
     
-    html = f"""<!DOCTYPE html>
-<html lang="tr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{baslik}</title>
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
-    <style>
-        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f6fa;
-            color: {COLORS['text']};
-            padding: 20px;
-        }}
-        .dashboard {{
-            max-width: 1400px;
-            margin: 0 auto;
-        }}
-        .header {{
-            background: linear-gradient(135deg, {COLORS['primary']}, {COLORS['secondary']});
-            color: white;
-            padding: 30px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-        }}
-        .header h1 {{ font-size: 28px; margin-bottom: 5px; }}
-        .header p {{ opacity: 0.9; font-size: 14px; }}
-        
-        .grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }}
-        .card {{
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }}
-        .card-title {{
-            font-size: 14px;
-            color: {COLORS['text_secondary']};
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 15px;
-        }}
-        .metric {{
-            font-size: 36px;
-            font-weight: 700;
-            color: {COLORS['primary']};
-        }}
-        .metric-sub {{ font-size: 14px; color: {COLORS['text_secondary']}; }}
-        
-        .chart-card {{
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            margin-bottom: 20px;
-        }}
-        .chart {{ height: 400px; }}
-        
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }}
-        th, td {{
-            padding: 12px;
-            text-align: right;
-            border-bottom: 1px solid {COLORS['grid']};
-        }}
-        th {{
-            background: {COLORS['grid']};
-            color: {COLORS['secondary']};
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 11px;
-        }}
-        th:first-child, td:first-child {{ text-align: left; }}
-        tr:hover {{ background: #fafbfc; }}
-        
-        .quality-bar {{
-            height: 8px;
-            background: {COLORS['grid']};
-            border-radius: 4px;
-            overflow: hidden;
-            margin-top: 10px;
-        }}
-        .quality-fill {{
-            height: 100%;
-            border-radius: 4px;
-            transition: width 0.5s ease;
-        }}
-        .quality-good {{ background: {COLORS['success']}; }}
-        .quality-medium {{ background: {COLORS['warning']}; }}
-        .quality-bad {{ background: {COLORS['danger']}; }}
-        
-        .anomaly-badge {{
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-        }}
-        .anomaly-high {{ background: #ffeaea; color: {COLORS['danger']}; }}
-        .anomaly-low {{ background: #fff8e6; color: {COLORS['warning']}; }}
-        
-        .footer {{
-            text-align: center;
-            color: {COLORS['text_secondary']};
-            font-size: 12px;
-            padding: 20px;
-        }}
-    </style>
-</head>
-<body>
-    <div class="dashboard">
-        <div class="header">
-            <h1>{baslik}</h1>
-            <p>Oluşturulma: {datetime.now().strftime('%d.%m.%Y %H:%M')} | Kaynak: TCMB EVDS</p>
-        </div>
-        
-        <div class="grid">
-            <div class="card">
-                <div class="card-title">Veri Kalitesi</div>
-                <div class="metric">{kalite['puan']}/100</div>
-                <div class="metric-sub">{kalite['degerlendirme']}</div>
-                <div class="quality-bar">
-                    <div class="quality-fill {'quality-good' if kalite['puan'] >= 75 else 'quality-medium' if kalite['puan'] >= 50 else 'quality-bad'}" 
-                         style="width: {kalite['puan']}%"></div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-title">Toplam Gözlem</div>
-                <div class="metric">{kalite['genel']['satir_sayisi']:,}</div>
-                <div class="metric-sub">{kalite['genel']['sutun_sayisi']} seri</div>
-            </div>
-            <div class="card">
-                <div class="card-title">Eksik Veri</div>
-                <div class="metric">{kalite['genel']['eksik_oran']}%</div>
-                <div class="metric-sub">{kalite['genel']['eksik_toplam']:,} hücre</div>
-            </div>
-            <div class="card">
-                <div class="card-title">Anomali Sayısı</div>
-                <div class="metric">{sum(a['sayi'] for a in anomali_ozet)}</div>
-                <div class="metric-sub">{len(anomali_ozet)} seride tespit</div>
-            </div>
-        </div>
-        
-        <div class="chart-card">
-            <div class="card-title">Zaman Serisi Trendi</div>
-            <div id="trendChart" class="chart"></div>
-        </div>
-        
-        <div class="grid" style="grid-template-columns: 1fr 1fr;">
-            <div class="chart-card">
-                <div class="card-title">Korelasyon Matrisi</div>
-                <div id="corrChart" class="chart"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">Özet İstatistikler</div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Seri</th>
-                            <th>N</th>
-                            <th>Ort.</th>
-                            <th>Std</th>
-                            <th>Min</th>
-                            <th>Max</th>
-                            <th>Son</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {''.join(f"<tr><td>{s['Seri']}</td><td>{s['Gözlem']}</td><td>{s['Ortalama']}</td><td>{s['Std']}</td><td>{s['Min']}</td><td>{s['Max']}</td><td>{s['Son']}</td></tr>" for s in stats_data)}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        
-        {'<div class="card"><div class="card-title">Tespit Edilen Anomaliler</div><table><thead><tr><th>Seri</th><th>Anomali Sayısı</th><th>Oran</th></tr></thead><tbody>' + ''.join(f"<tr><td>{a['seri']}</td><td>{a['sayi']}</td><td><span class=\\'anomaly-badge {'anomaly-high' if a['oran'] > 5 else 'anomaly-low'}\\'>{a['oran']}%</span></td></tr>" for a in anomali_ozet) + '</tbody></table></div>' if anomali_ozet else ''}
-        
-        <div class="footer">
-            Dashboard by EVDS Analiz Skill | Veri: TCMB EVDS
-        </div>
-    </div>
+    # Güvenlik: Kullanıcı verilerini escape et
+    baslik_esc = html.escape(baslik)
+
+    # Şablon değişkenlerini hazırla
+    olusturulma_tarihi = datetime.now().strftime('%d.%m.%Y %H:%M')
     
-    <script>
-        // Trend Chart
-        var trendData = {json.dumps(series_data)};
-        var tarihler = {json.dumps(tarihler)};
-        
-        var trendTraces = trendData.map(function(s) {{
-            return {{
-                x: tarihler,
-                y: s.data,
-                name: s.name,
-                type: 'scatter',
-                mode: 'lines',
-                line: {{ color: s.color, width: 2 }}
-            }};
-        }});
-        
-        Plotly.newPlot('trendChart', trendTraces, {{
-            margin: {{ l: 50, r: 30, t: 20, b: 40 }},
-            xaxis: {{ gridcolor: '{COLORS['grid']}' }},
-            yaxis: {{ gridcolor: '{COLORS['grid']}' }},
-            hovermode: 'x unified',
-            legend: {{ orientation: 'h', y: 1.1 }}
-        }}, {{ responsive: true, displayModeBar: false }});
-        
-        // Correlation Chart
-        var corrData = {json.dumps(corr_data)};
-        
-        Plotly.newPlot('corrChart', [{{
-            z: corrData.values,
-            x: corrData.labels,
-            y: corrData.labels,
-            type: 'heatmap',
-            colorscale: [
-                [0, '#E74C3C'],
-                [0.5, '#ECF0F1'],
-                [1, '#3498DB']
-            ],
-            zmin: -1,
-            zmax: 1,
-            showscale: true,
-            colorbar: {{ title: 'r' }}
-        }}], {{
-            margin: {{ l: 100, r: 50, t: 20, b: 100 }},
-            xaxis: {{ tickangle: -45 }}
-        }}, {{ responsive: true, displayModeBar: false }});
-    </script>
-</body>
-</html>"""
+    stats_html = ''.join(f"<tr><td>{html.escape(str(s['Seri']))}</td><td>{s['Gözlem']}</td><td>{s['Ortalama']}</td><td>{s['Std']}</td><td>{s['Min']}</td><td>{s['Max']}</td><td>{s['Son']}</td></tr>" for s in stats_data)
+
+    anomali_html = ''
+    if anomali_ozet:
+        anomali_rows = ''.join(f"<tr><td>{html.escape(str(a['seri']))}</td><td>{a['sayi']}</td><td><span class='anomaly-badge {'anomaly-high' if a['oran'] > 5 else 'anomaly-low'}'>{a['oran']}%</span></td></tr>" for a in anomali_ozet)
+        anomali_html = f'<div class="card"><div class="card-title">Tespit Edilen Anomaliler</div><table><thead><tr><th>Seri</th><th>Anomali Sayısı</th><th>Oran</th></tr></thead><tbody>{anomali_rows}</tbody></table></div>'
+
+    html_content = DASHBOARD_TEMPLATE.format(
+        baslik_esc=baslik_esc,
+        olusturulma_tarihi=olusturulma_tarihi,
+        kalite_puan=kalite['puan'],
+        kalite_degerlendirme=kalite['degerlendirme'],
+        quality_class='quality-good' if kalite['puan'] >= 75 else 'quality-medium' if kalite['puan'] >= 50 else 'quality-bad',
+        toplam_gozlem=f"{kalite['genel']['satir_sayisi']:,}",
+        sutun_sayisi=kalite['genel']['sutun_sayisi'],
+        eksik_oran=kalite['genel']['eksik_oran'],
+        eksik_toplam=f"{kalite['genel']['eksik_toplam']:,}",
+        anomali_toplam=sum(a['sayi'] for a in anomali_ozet),
+        anomali_seri_sayisi=len(anomali_ozet),
+        trend_data_json=json.dumps(series_data).replace('<', '\u003c'),
+        tarihler_json=json.dumps(tarihler).replace('<', '\u003c'),
+        corr_data_json=json.dumps(corr_data).replace('<', '\u003c'),
+        stats_html=stats_html,
+        anomali_html=anomali_html,
+        color_primary=COLORS['primary'],
+        color_secondary=COLORS['secondary'],
+        color_text=COLORS['text'],
+        color_text_secondary=COLORS['text_secondary'],
+        color_grid=COLORS['grid'],
+        color_success=COLORS['success'],
+        color_warning=COLORS['warning'],
+        color_danger=COLORS['danger']
+    )
     
+    dosya_adi = os.path.basename(dosya_adi)
     with open(dosya_adi, 'w', encoding='utf-8') as f:
-        f.write(html)
+        f.write(html_content)
     
     return dosya_adi
 

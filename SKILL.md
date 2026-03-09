@@ -283,6 +283,141 @@ Ham veri + hesaplanan değişkenler
 | Boş veri | Tarih aralığı uygun değil | Seri aktif mi, tarih formatı doğru mu kontrol et |
 | Tarih parse hatası | Farklı frekans formatları | `parse_evds_tarih()` fonksiyonunu kullan |
 
+## SCRIPTS KULLANIMI
+
+`scripts/` klasörü altındaki modülleri kullanarak analiz yapabilirsiniz:
+
+### 1. EVDS Client (`scripts/evds_client.py`)
+```python
+from scripts.evds_client import EVDSClient
+
+client = EVDSClient(api_key="YOUR_KEY")
+
+# Veri çek
+df = client.veri_cek('TP.DK.USD.A', '01-01-2024', '31-12-2024')
+
+# Kategori listesi
+kategoriler = client.kategorileri_getir()
+
+# Veri grubu serileri
+seriler = client.grup_serileri('bie_tukfiy4')
+
+# Tanımlayıcı istatistikler
+from scripts.evds_client import tanimlayici_istatistikler, istatistik_ozeti_formatla
+ist = tanimlayici_istatistikler(df)
+print(istatistik_ozeti_formatla(ist))
+```
+
+### 2. Analiz (`scripts/analiz.py`)
+```python
+from scripts.analiz import (
+    korelasyon_analizi,
+    ols_regresyon,
+    arima_analizi,
+    var_analizi,
+    mevsimsellik_analizi,
+    format_ols,
+    format_arima,
+    format_korelasyon
+)
+
+# Korelasyon
+corr = korelasyon_analizi(df)
+print(format_korelasyon(corr))
+
+# OLS Regresyon
+ols = ols_regresyon(y=df['USD'], X=df[['EUR', 'GBP']])
+print(format_ols(ols, 'USD'))
+
+# ARIMA
+arima = arima_analizi(df['USD'], tahmin_donemi=12)
+print(format_arima(arima, 'USD'))
+
+# VAR (çoklu seri)
+var = var_analizi(df, degiskenler=['USD', 'EUR', 'GBP'])
+
+# Mevsimsellik
+mevsim = mevsimsellik_analizi(df['TÜFE'], periyot=12)
+```
+
+### 3. Grafik (`scripts/grafik.py`)
+```python
+from scripts.grafik import (
+    cizgi_grafik,
+    coklu_eksen_grafik,
+    korelasyon_matrisi_grafik,
+    bar_grafik,
+    mevsimsellik_grafik,
+    tahmin_grafik
+)
+
+# Çizgi grafik
+cizgi_grafik(df, 'USD/TL Kur', 'TL', 'usd_grafik.html')
+
+# Çoklu eksen (farklı birimler)
+coklu_eksen_grafik(df, ['USD', 'EUR'], 'Döviz Kurları', 'doviz.html')
+
+# Korelasyon matrisi
+korelasyon_matrisi_grafik(df, 'Korelasyon Matrisi', 'korelasyon.html')
+
+# Bar grafik
+bar_grafik(df, 'Aylık Ortalamalar', 'TL', 'bar.html')
+
+# Mevsimsellik grafik
+mevsimsellik_grafik(df['TÜFE'], 'TÜFE Mevsimsellik', 'mevsim.html')
+
+# Tahmin grafik (ARIMA sonrası)
+tahmin_grafik(df['USD'], tahminler, 'Tahmin', 'tahmin.html')
+```
+
+### 4. Gelişmiş Analiz (`scripts/gelismis_analiz.py`)
+```python
+from scripts.gelismis_analiz import (
+    veri_kalitesi_kontrolu,
+    anomali_tespiti,
+    mevsimsellik_temizle,
+    coklu_degisken_analizi,
+    dashboard_olustur,
+    durgunluk_testi,
+    frekans_donusumu,
+    format_veri_kalitesi,
+    format_anomali,
+    format_mevsimsellik,
+    format_coklu_analiz
+)
+
+# Veri kalitesi kontrolü (100 üzerinden puan)
+kalite = veri_kalitesi_kontrolu(df)
+print(format_veri_kalitesi(kalite))
+
+# Outlier tespiti (IQR, Z-score, MAD, Isolation Forest)
+outliers = anomali_tespiti(df['USD'])
+print(format_anomali(outliers))
+
+# Mevsimsellik temizleme (STL, MA, X11)
+adjusted = mevsimsellik_temizle(df, 'STL')
+print(format_mevsimsellik(adjusted))
+
+# Çoklu değişken analizi (PCA, Granger, tüm korelasyonlar)
+coklu = coklu_degisken_analizi(df)
+print(format_coklu_analiz(coklu))
+
+# Durağanlık testleri (ADF, KPSS)
+adf = durgunluk_testi(df['USD'], test='adf')
+kpss = durgunluk_testi(df['USD'], test='kpss')
+
+# Frekans dönüşümü
+aylik = frekans_donusumu(haftalik_df, 'aylik')
+ceyreklik = frekans_donusumu(aylik_df, 'ceyreklik')
+
+# Dashboard (tek komutla kapsamlı rapor)
+dashboard_olustur(
+    seriler=[df1, df2, df3],
+    baslik='Ekonomik Analiz Dashboard',
+    dosya_adi='dashboard.html'
+)
+```
+
 ## KRİTİK NOKTALAR
 
 1. **API key MUTLAKA header'da gönderilmeli** - `headers = {'key': API_KEY}`

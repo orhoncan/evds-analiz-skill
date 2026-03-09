@@ -10,10 +10,12 @@ TCMB Elektronik Veri Dağıtım Sistemi için Python wrapper.
 """
 
 import requests
+import requests_cache
 import pandas as pd
 from datetime import datetime
 from typing import List, Dict, Optional, Union
 import re
+import functools
 
 class EVDSClient:
     """TCMB EVDS API istemcisi."""
@@ -53,7 +55,21 @@ class EVDSClient:
         self.headers = {'key': api_key}
         self.base_url = (base_url or self.BASE_URL).rstrip('/')
         self._kategoriler = None
+        # Cache'i sqlite backend ile kalıcı yapıyoruz ki farklı client instance'ları aynı veriyi tekrar çekmesin.
+        # Bu sayede birden fazla client yaratılsa veya betik tekrar çalıştırılsa dahi aynı request 1 saat boyunca tekrar yapılmaz.
+        # Temp klasöründe tutuyoruz ki git reposunu kirletmesin.
+        import tempfile
+        import os
+        cache_path = os.path.join(tempfile.gettempdir(), 'evds_cache')
+        self.session = requests_cache.CachedSession(cache_path, backend='sqlite', expire_after=3600)
+        self.session.headers.update(self.headers)
     
+    def _get_cached_json(self, url: str, timeout: int = 60) -> dict:
+        """Belirtilen URL'den JSON yanıtını alır ve önbelleğe (cache) kaydeder."""
+        response = self.session.get(url, timeout=timeout)
+        response.raise_for_status()
+        return response.json()
+
     def _extract_records(self, data: Union[dict, list], endpoint: str) -> List[dict]:
         """EVDS yanıtından kayıt listesini çıkarır (dict/list uyumluluğu)."""
         if isinstance(data, list):
@@ -73,11 +89,9 @@ class EVDSClient:
         url = f"{self.base_url}/{endpoint}"
         
         try:
-            response = requests.get(url, headers=self.headers, timeout=30)
-            response.raise_for_status()
-            return response.json()
+            return self._get_cached_json(url, timeout=30)
         except requests.exceptions.HTTPError as e:
-            if response.status_code == 403:
+            if e.response is not None and e.response.status_code == 403:
                 raise ValueError("API anahtarı geçersiz veya eksik. Lütfen kontrol edin.")
             raise e
         except requests.exceptions.RequestException as e:
@@ -120,7 +134,7 @@ class EVDSClient:
         data = self._request_metadata(endpoint)
         return pd.DataFrame(self._extract_records(data, "serieList"))
     
-    def veri_cek(
+    def _build_veri_cek_url(
         self,
         seriler: Union[str, List[str]],
         baslangic: str,
@@ -128,32 +142,8 @@ class EVDSClient:
         frekans: Optional[Union[int, str]] = None,
         formul: Optional[Union[int, str, List]] = None,
         aggregation: Optional[Union[str, List[str]]] = None
-    ) -> pd.DataFrame:
-        """
-        EVDS'den veri çeker.
-        
-        ÖNEMLİ: 5 Nisan 2024'ten itibaren URL path formatı kullanılmalı!
-        
-        Parameters:
-        -----------
-        seriler : str or list
-            Seri kodu veya kodları listesi
-        baslangic : str
-            Başlangıç tarihi (gg-aa-yyyy)
-        bitis : str
-            Bitiş tarihi (gg-aa-yyyy)
-        frekans : int or str, optional
-            Frekans kodu veya adı
-        formul : int or str or list, optional
-            Formül kodu/adı veya listesi
-        aggregation : str or list, optional
-            Aggregation yöntemi
-        
-        Returns:
-        --------
-        pd.DataFrame
-            Tarih indexli veri
-        """
+    ) -> str:
+        """veri_cek metodu için URL oluşturur."""
         # Serileri hazırla
         if isinstance(seriler, str):
             seriler = [seriler]
@@ -181,16 +171,52 @@ class EVDSClient:
             else:
                 agg_str = self.AGGREGATION.get(aggregation.lower(), aggregation)
             url += f"&aggregationTypes={agg_str}"
+
+        return url
+
+    def veri_cek(
+        self,
+        seriler: Union[str, List[str]],
+        baslangic: str,
+        bitis: str,
+        frekans: Optional[Union[int, str]] = None,
+        formul: Optional[Union[int, str, List]] = None,
+        aggregation: Optional[Union[str, List[str]]] = None
+    ) -> pd.DataFrame:
+        """
+        EVDS'den veri çeker.
+
+        ÖNEMLİ: 5 Nisan 2024'ten itibaren URL path formatı kullanılmalı!
+
+        Parameters:
+        -----------
+        seriler : str or list
+            Seri kodu veya kodları listesi
+        baslangic : str
+            Başlangıç tarihi (gg-aa-yyyy)
+        bitis : str
+            Bitiş tarihi (gg-aa-yyyy)
+        frekans : int or str, optional
+            Frekans kodu veya adı
+        formul : int or str or list, optional
+            Formül kodu/adı veya listesi
+        aggregation : str or list, optional
+            Aggregation yöntemi
+
+        Returns:
+        --------
+        pd.DataFrame
+            Tarih indexli veri
+        """
+        url = self._build_veri_cek_url(seriler, baslangic, bitis, frekans, formul, aggregation)
         
         # İstek gönder (key header'da)
         try:
-            response = requests.get(url, headers=self.headers, timeout=60)
-            response.raise_for_status()
-            data = response.json()
+            data = self._get_cached_json(url, timeout=60)
         except requests.exceptions.HTTPError as e:
-            if response.status_code == 403:
+            if e.response is not None and e.response.status_code == 403:
                 raise ValueError("API anahtarı geçersiz veya eksik. Lütfen kontrol edin.")
-            elif response.status_code == 404:
+            elif e.response is not None and e.response.status_code == 404:
                 raise ValueError("Veri bulunamadı. URL formatını veya seri kodlarını kontrol edin.")
             raise e
         except requests.exceptions.RequestException as e:
@@ -202,7 +228,11 @@ class EVDSClient:
         kayitlar = self._extract_records(data, "series")
         if not kayitlar:
             raise ValueError("Veri bulunamadı. Tarih aralığını ve seri kodlarını kontrol edin.")
-        
+
+        return self._process_veri_cek_response(kayitlar)
+
+    def _process_veri_cek_response(self, kayitlar: List[dict]) -> pd.DataFrame:
+        """EVDS veri yanıtını işleyip DataFrame olarak döndürür."""
         # DataFrame oluştur
         df = pd.DataFrame(kayitlar)
         
@@ -217,12 +247,16 @@ class EVDSClient:
         df = self._parse_tarih(df, tarih_sutunu)
         
         # Sayısal sütunları dönüştür
-        for col in df.columns:
-            if col not in ['UNIXTIME', 'YEARWEEK']:
-                if df[col].dtype == object:
-                    temiz = df[col].astype(str).str.replace(',', '.', regex=False)
-                    df[col] = temiz.replace(r'^\s*$', pd.NA, regex=True)
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+        cols_to_convert = [col for col in df.columns if col not in ['UNIXTIME', 'YEARWEEK']]
+        if cols_to_convert:
+            # Sadece object (string) sütunlarda temizlik yap
+            obj_cols = df[cols_to_convert].select_dtypes(include=['object', 'string']).columns
+            if not obj_cols.empty:
+                # Virgülleri noktaya çevir (vectorized). str.replace ile df.replace(regex=True)'ye göre çok daha hızlı
+                df[obj_cols] = df[obj_cols].apply(lambda x: x.astype(str).str.replace(',', '.', regex=False))
+
+            # Sayısal dönüşümü toplu yap (boşluklar otomatik NaN olur)
+            df[cols_to_convert] = df[cols_to_convert].apply(pd.to_numeric, errors='coerce')
         
         # Gereksiz sütunları kaldır
         for col in ['UNIXTIME', 'YEARWEEK']:
@@ -230,7 +264,7 @@ class EVDSClient:
                 df = df.drop(col, axis=1)
         
         return df.sort_index()
-    
+
     def _parse_tarih(self, df: pd.DataFrame, tarih_sutunu: str) -> pd.DataFrame:
         """
         EVDS tarih formatını otomatik algıla ve parse et.
@@ -343,14 +377,27 @@ def tanimlayici_istatistikler(df: pd.DataFrame) -> Dict:
     """
     sonuclar = {}
     
+    if df.empty:
+        return sonuclar
+
+    # Calculate basic stats for the entire dataframe in one go
+    stats = df.agg(['mean', 'std', 'min', 'max'])
+
+    # Precompute properties to avoid per-column overhead where possible
+    counts = df.count()
+    idxmin_s = df.idxmin()
+    idxmax_s = df.idxmax()
+    nas_s = df.isna().sum()
+
     for col in df.columns:
-        seri = df[col].dropna()
-        
-        if len(seri) == 0:
+        if counts[col] == 0:
             continue
+
+        seri = df[col].dropna()
+        n = len(seri)
         
         # Trend belirleme
-        if len(seri) >= 12:
+        if n >= 12:
             son_12 = seri.tail(12)
             ilk_6 = son_12.head(6).mean()
             son_6 = son_12.tail(6).mean()
@@ -370,16 +417,16 @@ def tanimlayici_istatistikler(df: pd.DataFrame) -> Dict:
         sonuclar[col] = {
             'baslangic': seri.index.min().strftime('%d.%m.%Y'),
             'bitis': seri.index.max().strftime('%d.%m.%Y'),
-            'gozlem': len(seri),
-            'ortalama': round(seri.mean(), 2),
-            'std': round(seri.std(), 2),
-            'min': round(seri.min(), 2),
-            'min_tarih': seri.idxmin().strftime('%d.%m.%Y'),
-            'max': round(seri.max(), 2),
-            'max_tarih': seri.idxmax().strftime('%d.%m.%Y'),
-            'son_deger': round(seri.iloc[-1], 2),
+            'gozlem': int(counts[col]),
+            'ortalama': round(float(stats.loc['mean', col]), 2),
+            'std': round(float(stats.loc['std', col]), 2),
+            'min': round(float(stats.loc['min', col]), 2),
+            'min_tarih': idxmin_s[col].strftime('%d.%m.%Y'),
+            'max': round(float(stats.loc['max', col]), 2),
+            'max_tarih': idxmax_s[col].strftime('%d.%m.%Y'),
+            'son_deger': round(float(seri.iloc[-1]), 2),
             'trend': trend,
-            'eksik': df[col].isna().sum()
+            'eksik': int(nas_s[col])
         }
     
     return sonuclar

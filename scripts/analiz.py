@@ -6,7 +6,7 @@ Istatistiksel analizler: OLS, ARIMA, VAR, mevsimsellik, korelasyon.
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -15,25 +15,38 @@ def korelasyon_analizi(df: pd.DataFrame, metot: str = 'pearson') -> Dict:
     """Korelasyon analizi yapar."""
     corr = df.corr(method=metot)
     
-    yorumlar = []
-    for i in range(len(corr.columns)):
-        for j in range(i + 1, len(corr.columns)):
-            r = corr.iloc[i, j]
-            col1, col2 = corr.columns[i], corr.columns[j]
-            
-            if abs(r) >= 0.8:
-                guc = "cok guclu"
-            elif abs(r) >= 0.6:
-                guc = "guclu"
-            elif abs(r) >= 0.4:
-                guc = "orta"
-            elif abs(r) >= 0.2:
-                guc = "zayif"
-            else:
-                guc = "ihmal edilebilir"
-            
-            yon = "pozitif" if r > 0 else "negatif"
-            yorumlar.append({'seri1': col1, 'seri2': col2, 'r': round(r, 3), 'guc': guc, 'yon': yon})
+    mask = np.triu(np.ones(corr.shape), k=1).astype(bool)
+    rows, cols = np.where(mask)
+    col_names = corr.columns
+    r_values = corr.values[rows, cols]
+
+    stacked = pd.DataFrame({
+        'seri1': col_names[rows],
+        'seri2': col_names[cols],
+        'r': r_values
+    })
+
+    abs_r = stacked['r'].abs()
+    stacked['guc'] = np.select(
+        [
+            abs_r >= 0.8,
+            abs_r >= 0.6,
+            abs_r >= 0.4,
+            abs_r >= 0.2
+        ],
+        [
+            "cok guclu",
+            "guclu",
+            "orta",
+            "zayif"
+        ],
+        default="ihmal edilebilir"
+    )
+
+    stacked['yon'] = np.where(stacked['r'] > 0, "pozitif", "negatif")
+    stacked['r'] = stacked['r'].round(3)
+
+    yorumlar = stacked.to_dict('records')
     
     return {'matris': corr, 'yorumlar': yorumlar}
 
