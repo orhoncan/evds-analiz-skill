@@ -401,6 +401,8 @@ def tahmin_grafik(
 def _html_sablonu(traces: List[dict], layout: dict, baslik: str) -> str:
     """Plotly HTML şablonu oluşturur."""
     baslik_esc = html.escape(baslik)
+    traces_json = json.dumps(traces).replace("<", r"\u003c")
+    layout_json = json.dumps(layout).replace("<", r"\u003c")
     return f"""<!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -431,8 +433,8 @@ def _html_sablonu(traces: List[dict], layout: dict, baslik: str) -> str:
     <div class="baslik">Kaynak: TCMB EVDS</div>
     <div id="grafik"></div>
     <script>
-        var traces = {json.dumps(traces).replace("<", "\\u003c")};
-        var layout = {json.dumps(layout).replace("<", "\\u003c")};
+        var traces = {traces_json};
+        var layout = {layout_json};
         var config = {{
             responsive: true,
             displayModeBar: true,

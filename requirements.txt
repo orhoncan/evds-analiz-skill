@@ -1,0 +1,8 @@
+requests>=2.31.0
+pandas>=2.0.0
+plotly>=5.14.0
+statsmodels>=0.14.0
+requests-cache>=1.0.0
+
+# Testing
+pytest>=7.0.0
